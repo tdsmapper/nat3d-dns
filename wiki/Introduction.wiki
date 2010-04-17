@@ -20,7 +20,7 @@ Unlike DynDNS.com which records only one IP address in an "A" record, NAT3D requ
 [ServerDeployment Learn] how to deploy the server.
 
 == Client ==
-The client is written in C, works on UNIX/Linux and Windows.
+The client is written in C, works on UNIX/Linux and Windows. It is meant to update the address/domain of one machine.
 
 It polls the local interface as well as the external IP address (via checkip.dyndns.com) for an address change. In case of the local interface, it can detect changes in interface address, or a different interface on the same network. When there is a change of address, it reports the internal and external addresses to the DynDNS Server.
 
