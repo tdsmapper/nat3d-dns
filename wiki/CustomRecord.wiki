@@ -3,13 +3,14 @@
 = Introduction =
 
 Sample NSUpdate Query
-
+{{{
 nsupdate
 > server xyz.com
 > zone nattt
 > update add 5.nattt. 1 TYPE65324 \# 10 xx xx xx xx 26 94 0a 00 00 05     
 > show
 > send
+}}}
 
 Where {{{5.nattt}}} is the domain name. 
 
