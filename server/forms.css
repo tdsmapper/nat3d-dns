@@ -1,0 +1,30 @@
+table {
+   width: 80%;
+   background-color:#FFFFFF;
+   margin-bottom: 10px;
+   margin-left: 10%;
+   margin-right: 10%;
+   padding: 0px;
+   border: thin solid #000000;
+   border-style: dotted;
+   color: #550000;
+}
+
+td.lc {
+   width: 30%;
+    margin-top: 1px;
+   border: thin solid #CCCCCC;
+
+}
+
+td.rc {
+   margin-top: 1px;
+   margin-left:21%;
+   border: thin solid #CCCCCC;
+}    
+
+td.generic{
+   margin-top: 1px;
+   margin-left:21%;
+   border: thin solid #9999CC;
+}
