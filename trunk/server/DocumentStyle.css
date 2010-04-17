@@ -1,0 +1,26 @@
+        body {
+            background-color:#003366;
+            margin-left: 5%;
+            margin-right: 5%;
+            min-height: 100%;                
+        }
+        
+        .page{
+            min-height: 550px;        
+            background-color: #F5F5F5; 
+            margin-top: 5px;
+            margin-bottom: 5px;
+            padding: 2px;
+            border: thin solid #000000;
+            word-wrap: break-word;
+            color: #550000;
+        }
+        
+        div.footer{
+            color:#F0F8FF;
+            bottom:1;
+            right:1;
+            position:relative;
+            float: right;
+        }
+
