@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nat3d-dns-client", "nat3d-dns-client.vcproj", "{284D0344-AF66-46E6-8783-F4FE763E8470}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{284D0344-AF66-46E6-8783-F4FE763E8470}.Debug|Win32.ActiveCfg = Debug|Win32
+		{284D0344-AF66-46E6-8783-F4FE763E8470}.Debug|Win32.Build.0 = Debug|Win32
+		{284D0344-AF66-46E6-8783-F4FE763E8470}.Release|Win32.ActiveCfg = Release|Win32
+		{284D0344-AF66-46E6-8783-F4FE763E8470}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
