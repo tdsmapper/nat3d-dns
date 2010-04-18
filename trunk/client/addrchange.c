@@ -2,23 +2,30 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <ifaddrs.h>
+#include <unistd.h>
 #else
+#include <Winsock2.h>
+#include <Windows.h>
+#include <iphlpapi.h>
 #endif /* WIN32 */
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
 
+#include "types.h"
 #include "addrchange.h"
+#include "httpinform.h"
+#include "externalip.h"
 
 
-#ifndef WIN32
-ADAPTERSTATE get_adapter_status(uint32_t* p_uAddr, uint32_t* p_uNetmask, char szAdapterName[]) /* doc in header */
+
+#ifndef _MSC_VER
+ADAPTER_STATE get_adapter_status(uint32_t* p_uAddr, uint32_t* p_uNetmask, char szAdapterName[]) /* doc in header */
 {
-   ADAPTERSTATE adapterstate = DISCONNECTED;
+   ADAPTER_STATE adapter_state = DISCONNECTED;
    struct ifaddrs *ifaddr, *ifa;
    char szPotentialAdapter[MAXADAPTERLEN];
    uint32_t uPotAddr = 0, uPotNetmask =0;
@@ -44,9 +51,10 @@ ADAPTERSTATE get_adapter_status(uint32_t* p_uAddr, uint32_t* p_uNetmask, char sz
             //eprintf("Old: %x/%x, new %x/%x\n", *p_uAddr, *p_uNetmask, uAddr, uNetmask);
             /* We have the target address */
             if ((*p_uAddr == uAddr) &&
+                (*p_uNetmask == uNetmask) &&
                 (*p_uNetmask == uNetmask))
             {
-               adapterstate = CONNECTED;
+               adapter_state = CONNECTED;
                strncpy(szAdapterName, ifa->ifa_name, MAXADAPTERLEN); // Important for the first time this is called
                *p_uAddr = uAddr;
                *p_uNetmask = uNetmask;
@@ -66,12 +74,12 @@ ADAPTERSTATE get_adapter_status(uint32_t* p_uAddr, uint32_t* p_uNetmask, char sz
                /* If this is the same adapter as before, give it preference */
                if (!strncmp(szAdapterName, ifa->ifa_name, MAXADAPTERLEN))
                {
-                  adapterstate = DIFFERENT_IP;
+                  adapter_state = DIFFERENT_IP;
                }
                /* Accept another adapter only if no other suitable adapter was found */
-               else if (adapterstate == DISCONNECTED)
+               else if (ADAPTER_STATE == DISCONNECTED)
                {
-                  adapterstate = DIFFERENT_ADAPTER;
+                  adapter_state = DIFFERENT_ADAPTER;
                }
                strncpy(szPotentialAdapter, ifa->ifa_name, MAXADAPTERLEN);
                uPotNetmask = uNetmask;
@@ -81,7 +89,7 @@ ADAPTERSTATE get_adapter_status(uint32_t* p_uAddr, uint32_t* p_uNetmask, char sz
       }
       freeifaddrs(ifaddr);
    }
-   if (adapterstate != CONNECTED)
+   if (adapter_state != CONNECTED)
    {
       *p_uAddr = uPotAddr;
       *p_uNetmask = uPotNetmask;
@@ -92,13 +100,98 @@ ADAPTERSTATE get_adapter_status(uint32_t* p_uAddr, uint32_t* p_uNetmask, char sz
       }
       strncpy(szAdapterName, szPotentialAdapter, MAXADAPTERLEN);
    }
-   return adapterstate;
+   return adapter_state;
 }
 #else /* For WIN32 */
+enum ADAPTER_STATE get_adapter_status(uint32_t* p_uAddr, uint32_t* p_uNetmask, char szAdapterName[]) /* doc in header */
+{
+  enum ADAPTER_STATE adapter_state = DISCONNECTED;
+  char szPotentialAdapter[1024];
+  uint32_t uPotAddr = 0, uPotNetmask =0;
+  uint32_t uAdapterIP = 0, uAdapterMask = 0;
+  strcpy(szPotentialAdapter, "(none)");
+
+  PIP_ADAPTER_INFO pAdapterInfo;
+  PIP_ADAPTER_INFO pAdapter = NULL;
+  DWORD dwRetVal = 0;
+  ULONG ulOutBufLen = sizeof (IP_ADAPTER_INFO);
+  pAdapterInfo = (IP_ADAPTER_INFO *) malloc(sizeof (IP_ADAPTER_INFO));
+  if (pAdapterInfo == NULL)
+  {
+    eprintf("Error allocating memory needed to call GetAdaptersinfo\n");
+    adapter_state = GENERIC_ERROR;
+  }
+  // Make an initial call to GetAdaptersInfo to get
+  // the necessary size into the ulOutBufLen variable
+  else if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
+    free(pAdapterInfo);
+    pAdapterInfo = (IP_ADAPTER_INFO *) malloc(ulOutBufLen);
+    if (pAdapterInfo == NULL)
+    {
+      eprintf("Error allocating memory needed to call GetAdaptersinfo\n");
+      adapter_state = GENERIC_ERROR;
+    }
+  }
+
+  if (((dwRetVal = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen)) == NO_ERROR) &&
+    (adapter_state != GENERIC_ERROR)) 
+  {
+    pAdapter = pAdapterInfo;
+    while (pAdapter) 
+    {
+      uAdapterIP = inet_addr(pAdapter->IpAddressList.IpAddress.String);
+      uAdapterMask = inet_addr(pAdapter->IpAddressList.IpMask.String);
+      if ((*p_uAddr == uAdapterIP)&&
+        (*p_uNetmask == uAdapterMask))
+      {
+        adapter_state = CONNECTED;
+        strncpy(szAdapterName, pAdapter->Description, MAXADAPTERLEN);
+        break;
+      }
+      else if ((*p_uAddr & *p_uNetmask) &&
+        (uAdapterIP & uAdapterMask)     && 
+        (uAdapterMask == *p_uNetmask))
+      {
+        if (!strncmp(szAdapterName, pAdapter->Description, MAXADAPTERLEN))
+        {
+          adapter_state = DIFFERENT_IP;
+        }
+        else
+        {
+          adapter_state = DIFFERENT_ADAPTER;
+        }
+        strncpy(szPotentialAdapter, pAdapter->Description, MAXADAPTERLEN);
+        uPotNetmask = uAdapterMask;
+        uPotAddr = uAdapterIP;
+      }
+
+      pAdapter = pAdapter->Next;
+    } 
+  }
+  else
+  {
+    printf("GetAdaptersInfo failed with error: %d\n", dwRetVal);
+  }
+
+  if (adapter_state != CONNECTED)
+  {
+    *p_uAddr = uPotAddr;
+    *p_uNetmask = uPotNetmask;
+    if (strcmp(szAdapterName, szPotentialAdapter))
+    {
+      eprintf("Switched from using adapter %s to %s to maintain connectivity!\n", 
+        szAdapterName, szPotentialAdapter);
+    }
+    strncpy(szAdapterName, szPotentialAdapter, MAXADAPTERLEN);
+  }
+  if (pAdapterInfo)
+    free(pAdapterInfo);
+  return adapter_state;
+}
 
 #endif /* WIN32 */
 
-void calculate_sleep_time(ADAPTERSTATE as, int *sleeptimesec)
+void calculate_sleep_time(enum ADAPTER_STATE as, int *sleeptimesec)
 {
    assert(sleeptimesec > 0);
    switch(as)
@@ -114,7 +207,7 @@ void calculate_sleep_time(ADAPTERSTATE as, int *sleeptimesec)
          {
             *sleeptimesec = MIN_DISCONNEC_SLEEP_SEC;
          }
-         *sleeptimesec = DISCONNEC_SLEEP_INCREMENT * *sleeptimesec;
+         *sleeptimesec = (int)(DISCONNEC_SLEEP_INCREMENT * *sleeptimesec);
          if (*sleeptimesec > MAX_DISCONNEC_SLEEP_SEC)
          {
             *sleeptimesec = MAX_DISCONNEC_SLEEP_SEC;
@@ -123,25 +216,25 @@ void calculate_sleep_time(ADAPTERSTATE as, int *sleeptimesec)
    }
 }
 
-char* connstate_to_string(ADAPTERSTATE as)
+char* connstate_to_string(enum ADAPTER_STATE as)
 {
    static char szConnstate[256];
    switch(as)
    {
       case DISCONNECTED:
-         strcpy(szConnstate, "DISCONNECTED");
+         strncpy(szConnstate, "DISCONNECTED", sizeof(szConnstate));
          break;
 
       case DIFFERENT_ADAPTER:
-         strcpy(szConnstate, "DIFFERENT_ADAPTER");
+         strncpy(szConnstate, "DIFFERENT_ADAPTER", sizeof(szConnstate));
          break;
 
       case DIFFERENT_IP:
-         strcpy(szConnstate, "DIFFERENT_IP");
+         strncpy(szConnstate, "DIFFERENT_IP", sizeof(szConnstate));
          break;
 
       case CONNECTED:
-         strcpy(szConnstate, "CONNECTED");
+         strncpy(szConnstate, "CONNECTED", sizeof(szConnstate));
          break;
 
    }
@@ -153,28 +246,36 @@ int get_config_options(uint32_t *uIP, uint32_t *uNetmask, uint32_t *uServerIP, u
 {
    int iRet = -1;
    char szIP[20], szNetmask[20], szServerIP[20];
-   struct in_addr in;
+   in_addr_t in;
+   int iServerPort;
+
    printf("Please enter the adapter IP and netmask of the adapter on which to listen\n");
    printf("IP: ");
    scanf("%s", szIP);
-   if (inet_aton(szIP, &in) != 0)
+   in = inet_addr(szIP);
+   if ((in != 0) || (in != -1)) // diff return types Windows and NIX
    {
-      *uIP = (in.s_addr);
+      *uIP = in;
+
       printf("Netmask: ");
       scanf("%s", szNetmask);
-      if (inet_aton(szNetmask, &in) != 0)
+      in = inet_addr(szNetmask);
+      if ((in != 0) || (in != -1))
       {
-         *uNetmask = (in.s_addr);
+         *uNetmask = in;
+
          printf("DynDNS Server IP: ");
          scanf("%s", szServerIP);
-         if (inet_aton(szServerIP, &in) != 0)
+         in = inet_addr(szServerIP);
+         if ((in != 0) || (in != -1))
          {
-            int iServerPort;
+           *uServerIP = in;
+
             printf("DynDNS Server Port: ");
             scanf("%d", &iServerPort);
             if ((iServerPort >= 1) && (iServerPort <= 65535))
             {
-               *uServerPort = iServerPort;
+               *uServerPort = htons(iServerPort);
                printf("Username: ");
                scanf("%s", szUsername);
                printf("Password : ");
@@ -207,31 +308,59 @@ int get_config_options(uint32_t *uIP, uint32_t *uNetmask, uint32_t *uServerIP, u
 
 int main()
 {
-   ADAPTERSTATE adapterstate = DISCONNECTED;
-   char szAdapterName[MAXADAPTERLEN];
+  char szAdapterName[MAXADAPTERLEN];
    uint32_t ip, netmask;
    char szUsername[100], szPassword[100], szDomain[100];
+   enum ADAPTER_STATE adapter_state = DISCONNECTED;
+   
    int sleeptimesec = DEFAULT_SLEEP_TIME_SEC;
-   uint32_t uServerIP; uint16_t uServerPort;
+   uint32_t uServerIP;
+   uint16_t uServerPort;
+   int iRet;
    strcpy(szAdapterName, "(none)");
 
-   int iRet = get_config_options(&ip, &netmask, &uServerIP, &uServerPort,
+#ifdef _MSC_VER
+   WORD wVersionRequested;
+   WSADATA wsaData;
+   int err;
+
+   /* Use the MAKEWORD(lowbyte, highbyte) macro declared in Windef.h */
+   wVersionRequested = MAKEWORD(2, 2);
+
+   err = WSAStartup(wVersionRequested, &wsaData);
+   if (err != 0) {
+     /* Tell the user that we could not find a usable */
+     /* Winsock DLL.                                  */
+     printf("WSAStartup failed with error: %d\n", err);
+     return 1;
+   }
+   if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2) {
+     /* Tell the user that we could not find a usable */
+     /* WinSock DLL.                                  */
+     printf("Could not find a usable version of Winsock.dll\n");
+     WSACleanup();
+     return 1;
+   }
+
+#endif
+
+   iRet = get_config_options(&ip, &netmask, &uServerIP, &uServerPort,
          szUsername, szPassword, szDomain);
    if (0 == iRet)
    {
-      adapterstate = get_adapter_status(&ip, &netmask, szAdapterName);
-      if (adapterstate != DISCONNECTED)
+      adapter_state = get_adapter_status(&ip, &netmask, szAdapterName);
+      if (adapter_state != DISCONNECTED)
       {
+        uint32_t extIP = 0;
          printf("Started daemon on adapter %s!\n", szAdapterName);
 
-         uint32_t extIP = 0;
          if (get_external_ip(&extIP) == 0)
          {
-            make_http_request(0, htons(80),extIP, ip, szUsername, szPassword, szDomain);
+            make_http_request(uServerIP, uServerPort, extIP, ip, szUsername, szPassword, szDomain);
          }
          while (1)
          {
-            calculate_sleep_time(adapterstate, &sleeptimesec);
+            calculate_sleep_time(adapter_state, &sleeptimesec);
             sleep(sleeptimesec);
 
             /* Try getting external IP. If this fails, there is no reason to check adapter
@@ -244,18 +373,18 @@ int main()
             //eprintf("Got an external ip of %x\n", extIP);
 
             /* Get internal IP */
-            adapterstate = get_adapter_status(&ip, &netmask, szAdapterName);
-            if ((adapterstate == DIFFERENT_IP) || (adapterstate == DIFFERENT_ADAPTER))
+            adapter_state = get_adapter_status(&ip, &netmask, szAdapterName);
+            if ((adapter_state == DIFFERENT_IP) || (adapter_state == DIFFERENT_ADAPTER))
             {
-               make_http_request(0, htons(80),extIP, ip, szUsername, szPassword, szDomain);
-               eprintf("Adapter state changed from connected to %s\n", connstate_to_string(adapterstate));
+               make_http_request(uServerIP, uServerPort, extIP, ip, szUsername, szPassword, szDomain);
+               eprintf("Adapter state changed from connected to %s\n", connstate_to_string(adapter_state));
             }
          }
       }
       else
       {
          printf("Please enter an IP address for an interface on this machine!\n");
-         eprintf("State: %s\n", connstate_to_string(adapterstate));
+         eprintf("State: %s\n", connstate_to_string(adapter_state));
       }
    }
    return iRet;
