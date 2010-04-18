@@ -1,7 +1,13 @@
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
+#ifndef _MSC_VER
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
+  #include <netdb.h>
+#else
+  #include <Winsock2.h>
+  #include <Windows.h>
+#endif
+
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
@@ -42,13 +48,15 @@ int retrieve_ip(char szResponse[], uint32_t *extIP)
    }
    if (numberseen)
    {
-      struct in_addr sin;
-      iRet = inet_aton(r, (struct in_addr*)&sin);
-      *extIP = sin.s_addr;
-      if (iRet)
-      {
+     in_addr_t in = inet_addr(r);
+     if ((in != 0) && (in != -1))
+     {
+       *extIP = in;
+       if (iRet)
+       {
          iRet = 0;
-      }
+       }
+     }
    }
    return iRet;
 }
@@ -69,7 +77,7 @@ int get_external_ip(uint32_t *extIP) // return 0 success
       uint32_t serverip = 0;
       if (get_server_ip(&serverip, SERVER) == 0)
       {
-         bzero((char *) &serv_addr, sizeof(serv_addr));
+         memset((char *) &serv_addr, 0, sizeof(serv_addr));
          serv_addr.sin_addr.s_addr = serverip;
          serv_addr.sin_family      = AF_INET;
          serv_addr.sin_port        = htons(80);
@@ -85,10 +93,10 @@ int get_external_ip(uint32_t *extIP) // return 0 success
             int n;
 
             sprintf(buffer, "GET checkip.dyndns.com\n\n");
-            n = write(sockfd, buffer, sizeof(buffer));
+            n = send(sockfd, buffer, sizeof(buffer), 0);
             if (n > 0)
             {
-               n = read(sockfd, szHttpBody, sizeof(szHttpBody));
+               n = recv(sockfd, szHttpBody, sizeof(szHttpBody), 0);
                if (retrieve_ip(szHttpBody, extIP) == 0)
                {
                   iRet = 0;

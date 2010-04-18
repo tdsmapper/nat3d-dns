@@ -1,7 +1,8 @@
-#ifndef _HTTPINFORM_H__
-#define  _HTTPINFORM_H__
+#ifndef __EXTERNALIP_H__
+#define __EXTERNALIP_H__
+#include "types.h"
  
 int get_external_ip(uint32_t *extIP); // return 0 success
 
-#endif /* _HTTPINFORM_H__ */
+#endif /* __EXTERNALIP_H__ */
 

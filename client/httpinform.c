@@ -1,16 +1,26 @@
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <string.h>
+#ifndef _MSC_VER
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
+  #include <netdb.h>
+#else
+  #include <Winsock2.h>
+  #include <Windows.h>
+#endif
+
 #include <stdio.h>
+#include <string.h>
 #include <errno.h>
 
 #include "addrchange.h"
 #include "httpinform.h"
 
+#ifndef max
 int max(int a, int b) {return a>b?a:b;}
+#endif
+#ifndef min
 int min(int a, int b) {return a<b?a:b;}
+#endif
 
 void parse_http_return_code(char szRetCode[])
 {
@@ -42,8 +52,8 @@ int get_server_ip(uint32_t *p_uIP, char szHostname[]) /* Return 0 success */
       eprintf("ERROR, no such host %s\n", szHostname);
       iRet = -1;
    }
-   bcopy((char *)server->h_addr, 
-         (char *)p_uIP,
+   memcpy((char *)p_uIP,
+         (char *)server->h_addr, 
          min(sizeof(uint32_t), server->h_length));
    return iRet;
 }
@@ -57,15 +67,6 @@ int get_http_status_code(char szHttpResponse[])
       response = -1;
    }
    return response;
-}
-
-char* get_http_body(char szHttpResponse[])
-{
-   char* tok = strtok(szHttpResponse, "\n");
-   while(tok)
-   {
-      tok = strtok(NULL, "\n");
-   }
 }
 
 int make_request_string(char szRequestString[], int iRequestStringSize, uint32_t uExtIP, uint32_t uIntIP,
@@ -120,13 +121,19 @@ int make_http_request(uint32_t uServerIP, uint16_t uServerPort, uint32_t uExtIP,
    }
    else
    {
-      bzero((char *) &serv_addr, sizeof(serv_addr));
+      memset((char *) &serv_addr, 0, sizeof(serv_addr));
       serv_addr.sin_addr.s_addr = uServerIP;
       serv_addr.sin_family      = AF_INET;
       serv_addr.sin_port        = uServerPort;
       if (connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) < 0) 
       {
-         eprintf("ERROR connecting %s\n", strerror(errno));
+#ifdef _MSC_VER
+        int lasterror = WSAGetLastError();
+        eprintf("ERROR connecting %s\n", strerror(errno));
+#else
+        eprintf("ERROR connecting %s\n", strerror(errno));
+#endif
+         
       }
       else
       {
@@ -134,13 +141,14 @@ int make_http_request(uint32_t uServerIP, uint16_t uServerPort, uint32_t uExtIP,
          if (make_request_string(buffer, sizeof(buffer), uExtIP, uIntIP, szUsername, 
                   szPassword, szDomain) == 0)
          {
-            n = write(sockfd, buffer, strlen(buffer));
+            n = send(sockfd, buffer, strlen(buffer), 0);
             if (n < 0) 
             {
                eprintf("ERROR writing to socket");
             }
             else
             {
+#ifndef _MSC_VER
                FILE *fHttp = fdopen(sockfd, "r");
                if (fHttp)
                {
@@ -180,6 +188,8 @@ int make_http_request(uint32_t uServerIP, uint16_t uServerPort, uint32_t uExtIP,
                   iRet = -1;
                   eprintf("Error opening file descriptor!\n");
                }
+#endif /* _MSC_VER */
+               eprintf("HTTP Request success!\n");
             }
          }
       }
