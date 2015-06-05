@@ -1,0 +1,2 @@
+  * It is also possible to use routing table updates to check for address changes. A decision was taken not to do this given the very short time constraints.
+  * The server does not support lost passwords. It is assumed that since the password is stored in plain text in so many locations, it won't be an issue.
